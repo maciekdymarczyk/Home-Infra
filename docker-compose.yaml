@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  database:
+    extends:
+      file: postgres/docker-compose.yaml
+      service: database
+  n8n:
+    extends:
+      file: n8n/docker-compose.yaml
+      service: n8n
+
+networks:
+  default:
+    name: main-network
+volumes:
+  db:
