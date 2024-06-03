@@ -1,0 +1,89 @@
+version: "3.9"
+services:
+  database:
+    image: postgres:15.2-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=prefect
+    expose:
+      - 5432
+    volumes:
+      - db:/var/lib/postgresql/data
+    profiles: ["server"]
+
+  minio:
+    image: minio/minio:latest
+    entrypoint: ["minio", "server", "--address", "0.0.0.0:9000", "--console-address", "0.0.0.0:9001", "/data"]
+    volumes:
+      - "minio:/data"
+    ports:
+      - 9000:9000
+      - 9001:9001
+    profiles: ["minio"]
+
+  server:
+    image: prefecthq/prefect:2.11.5-python3.11
+    restart: always
+    volumes:
+      - prefect:/root/.prefect
+    entrypoint: ["/opt/prefect/entrypoint.sh", "prefect", "server", "start"]
+    environment:
+      - PREFECT_UI_URL=http://127.0.0.1:4200/api
+      - PREFECT_API_URL=http://127.0.0.1:4200/api
+      - PREFECT_SERVER_API_HOST=0.0.0.0
+      - PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://postgres:postgres@database:5432/prefect
+    ports:
+      - 4200:4200
+    depends_on:
+      - database
+    profiles: ["server"]
+
+  worker_default:
+    image: prefecthq/prefect:2.11.5-python3.11
+    restart: always
+    entrypoint: ["/opt/prefect/entrypoint.sh", "prefect", "worker", "start", "--pool", "default-agent-pool"]
+    volumes:
+      - minio:/root/flows
+    environment:
+      - PREFECT_API_URL=http://server:4200/api
+    profiles: ["worker"]
+
+  worker_test:
+    image: prefecthq/prefect:2.11.5-python3.11
+    restart: always
+    entrypoint: ["/opt/prefect/entrypoint.sh", "prefect", "worker", "start", "--pool", "testowa-pula"]
+    volumes:
+      - minio:/root/flows
+    environment:
+      - PREFECT_API_URL=http://server:4200/api
+    profiles: ["worker"]
+
+  worker_test_cron:
+    image: prefecthq/prefect:2.11.5-python3.11
+    restart: always
+    entrypoint: ["/opt/prefect/entrypoint.sh", "prefect", "worker", "start", "--pool", "testowa-pula-cron"]
+    volumes:
+      - minio:/root/flows
+    environment:
+      - PREFECT_API_URL=http://server:4200/api
+    profiles: ["worker"]
+
+  cli:
+    image: prefecthq/prefect:2.11.5-python3.11
+    entrypoint: "bash"
+    working_dir: "/root/flows"
+    volumes:
+      - minio:/root/flows
+    environment:
+      - PREFECT_API_URL=http://server:4200/api
+    profiles: ["cli"]
+
+volumes:
+  prefect:
+  db:
+  minio:
+networks:
+  default:
+    name: prefect-network
